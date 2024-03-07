@@ -1,0 +1,414 @@
+<html>
+<head>
+  <title>Homework 3</title>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
+  
+  <style>
+    text, h1, h3{
+        font-family: sans-serif;
+    }
+    h3{
+        font-weight: lighter;
+    }
+    body {
+      background-color: black;
+      color: white; 
+      margin: 0; 
+      padding: 0; 
+    }
+    .neighborhood {
+      fill: lightgrey;
+      stroke: none;
+    }
+    .neighborhood-outline {
+      stroke: darkgrey;
+      stroke-width: 2px;
+      fill: none;
+    }
+
+    .legend text {
+        fill: white;
+        font-size: 12px;
+    }
+    label{
+        color:white;
+        font-family: sans-serif;
+    }
+    h1{
+        font-size: 50px;
+    }
+
+    #sidebar {
+        position: absolute;
+        top: 500px;
+        left: 750px; 
+        width: 300px; 
+        height: 400px;
+        background-color: black;
+        color: white;
+        padding: 10px;
+        border: 2px solid white;
+        display: none;
+    }
+    .neighborhood-label {
+        fill: white;
+        font-size: 35px;
+        font-weight: bolder;
+    }
+    
+  </style>
+  
+</head>
+<body>
+    
+      <h1>Explore the City of Pittsburgh</h1>
+      <div class = "intro">
+      <h3>
+        Pittsburgh, often celebrated as the "Steel City," is a vibrant metropolis that offers a unique blend of historical charm and modern 
+        innovation, making it an appealing choice for many looking to call a new city home. Its transformation from an industrial powerhouse to a 
+        hub for technology, education, healthcare, and the arts, represents a city that's constantly evolving while retaining its rich heritage. 
+        Pittsburgh is applauded for its affordable cost of living, especially when compared to other major U.S. cities, making it an attractive 
+        option for families, professionals, and retirees alike. 
+        <br /><br />
+        To explore Pittsburgh and its housing options, you can use the interactive map to <b>zoom in and out</b>, discovering homes in various 
+        neighborhoods that match your specific criteria. <b>Adjust the filters</b> for sale amount, bedrooms, and bathrooms to narrow down your search 
+        to homes that fit your needs. Clicking on a dot representing a home will bring up <b>detailed information about that property</b>, including its 
+        address, sale price, property type, number of bedrooms and bathrooms, and more. 
+      </h3></div>
+      
+      <svg id="map" height="700" width="700" style="background: #fff; margin-top:50px" ></svg>
+      <svg id="colorLegend" height="100" width="700" style="background: black; position: absolute; top: 1000px; left: 0px;" ></svg>
+      
+      <svg id="sidebar" class="sidebar" style="display: none;"></svg>
+
+      <div id="saleAmountFilter" style="position: absolute; top: 300px; left: 750px; background: black;">
+        <label for="minSaleAmount">Min Sale Amount:</label>
+        <input type="number" id="minSaleAmount" name="minSaleAmount" value=""><br><br>
+        
+        <label for="maxSaleAmount">Max Sale Amount:</label>
+        <input type="number" id="maxSaleAmount" name="maxSaleAmount" value=""><br><br>
+
+        <label for="bedrooms">Minimum # of Bedrooms:</label>
+        <select id="bedrooms">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+        </select><br><br>
+
+        <label for="bathrooms">Minimum # of Bathrooms:</label>
+        <select id="bathrooms">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        </select><br><br>
+
+        <button onclick="requestData()">Update Map</button>
+      </div>
+
+
+
+      <script>
+
+        const requestData = async function() {
+            const pitt = await d3.json("Neighborhoods_.json" )
+
+            console.log(pitt);
+
+            var neighborhoods = topojson.feature(pitt, pitt.objects.Neighborhoods_);
+            const neighborhoodMesh = topojson.mesh(pitt, pitt.objects.Neighborhoods_);
+            
+            let map = d3.select("#map");
+            let mapWidth = map.attr("width");
+            let mapHeight = map.attr("height");
+            let projection = d3.geoAlbers().fitSize([mapWidth, mapHeight], neighborhoods);
+            let path = d3.geoPath().projection(projection);
+            let viewport = map.append("g");
+
+
+            viewport.append("path")
+                    .attr("class","graticule")
+                    .attr("d",path(d3.geoGraticule10()));
+
+            viewport.selectAll(".neighborhood").data(neighborhoods.features)
+                    .enter()
+                    .append("path")
+                    .attr("class","neighborhood")
+                    .attr("d", path);
+
+            viewport.append("path")
+                    .datum(neighborhoodMesh)
+                    .attr("class","neighborhood-outline")
+                    .attr("d", path);
+
+
+            
+            const homes = await d3.csv("zillow_pittsburgh.csv", d3.autoType);
+            console.log(homes);
+
+            homes.forEach( d => {
+                d.Position = projection( [d.Longitude, d.Latitude] );
+            });
+
+            const minSaleAmount = parseFloat(document.getElementById("minSaleAmount").value);
+            const maxSaleAmount = parseFloat(document.getElementById("maxSaleAmount").value);
+            const bedrooms = parseFloat(document.getElementById("bedrooms").value);
+            const bathrooms = parseFloat(document.getElementById("bathrooms").value);
+
+            const filteredHomes = homes.filter(d => d['Sale Amount'] >= minSaleAmount && d['Sale Amount'] <= maxSaleAmount && d['Bedrooms'] >= bedrooms && d['Bathroom'] >= bathrooms);
+
+            
+            const minPrice = d3.min(filteredHomes, d => d['Sale Amount']);
+            const maxPrice = d3.max(filteredHomes, d => d['Sale Amount']);
+
+            const colorScale = d3.scaleLog().domain([minPrice, maxPrice]).range(['lightgreen', 'darkgreen']);
+
+            drawLegend("#colorLegend", colorScale);
+
+            let circles = viewport.selectAll("circle").data(filteredHomes)
+                                .join("circle")
+                                .attr("r", 3)
+                                .style("fill", d => colorScale(d['Sale Amount']))
+                                .attr("opacity", 0.8)
+                                .attr("cx", d => d.Position[0])
+                                .attr("cy", d => d.Position[1])
+                                .on("click", function(event, d) {
+                                    showHouseDetails(d);
+                                });
+
+
+            circles.on("mouseover", function(event, d) {
+            
+                d3.select(this)
+                    .attr("stroke","black")
+                    .attr("stroke-width", 1);
+
+            
+            });
+            circles.on("mouseout", function(event, d) {
+                
+                d3.select(this)
+                    .attr("stroke","")
+                    .attr("stroke-width", 1);
+
+            });
+
+
+            
+            function showHouseDetails(d){
+                const sidebar = d3.select("#sidebar");
+                sidebar.html(""); 
+                sidebar.style("display", "block");
+
+                sidebar.append("text")
+                        .attr("x", 10) 
+                        .attr("y", 20) 
+                        .text( `${d['Street Address']}`)
+                        .style("font-size", 20)
+                        .style("fill", "white");
+
+                sidebar.append("text")
+                        .attr("x", 10) 
+                        .attr("y", 40) 
+                        .text( `${d['Property Type']} in ${d['Neighborhood']}`)
+                        .style("fill", "white");
+
+            
+
+                sidebar.append("text")
+                        .attr("x", 10) 
+                        .attr("y", 80) 
+                        .text(`Price: $${d['Sale Amount']}`)
+                        .style("fill", "white");
+            
+                sidebar.append("text")
+                        .attr("x", 10) 
+                        .attr("y", 100) 
+                        .text(`Bedrooms: ${d['Bedrooms']}`)
+                        .style("fill", "white");
+                
+                sidebar.append("text")
+                        .attr("x", 10) 
+                        .attr("y", 120) 
+                        .text(`Bathrooms: ${d['Bathroom']}`)
+                        .style("fill", "white"); 
+                        
+                sidebar.append("text")
+                        .attr("x", 10) 
+                        .attr("y", 140) 
+                        .text(`Year Built: ${d['Year Built']}`)
+                        .style("fill", "white"); 
+                
+                sidebar.append("text")
+                        .attr("x", 10) 
+                        .attr("y", 160) 
+                        .text( `Size (sq. Ft.): ${d['Finished Size (Sq.Ft.)']}`)
+                        .style("fill", "white");
+                
+                sidebar.append("text")
+                        .attr("x", 10) 
+                        .attr("y", 180) 
+                        .text( `Last Sold Price: $${d['Last Sold Price']}`)
+                        .style("fill", "white");
+
+            }
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            //map functioning
+            var zoom = d3.zoom()
+                        .scaleExtent([1,20])
+                        .translateExtent([[-50,-50],[mapWidth+50,mapHeight+50]]) 
+                        .on("zoom", mapZoomed);
+
+            map.call(zoom);
+            map.call(zoom.transform, d3.zoomIdentity); 
+    
+
+            function mapZoomed({transform}) {       
+                viewport.attr("transform", transform.toString() );
+                viewport.select(".neighborhood-outline")
+                        .style("stroke-width", 2 / transform.k);
+            }
+   
+            viewport.selectAll(".neighborhood").on("click",clicked);
+
+            function clicked(event, d) {
+                console.log(d)
+
+                d3.selectAll(".neighborhood-label").remove();
+
+                let bounds = path.bounds(d.geometry); 
+                let dx = bounds[1][0] - bounds[0][0]; 
+                let dy = bounds[1][1] - bounds[0][1]; 
+                let x = (bounds[0][0] + bounds[1][0]) / 2; 
+                let y = (bounds[0][1] + bounds[1][1]) / 2; 
+
+               
+
+                d3.select("#map")
+                    .append("text")
+                    .attr("class", "neighborhood-label")
+                    .attr("x", mapWidth-50)
+                    .attr("y", 50)
+                    .attr("text-anchor", "end")
+                    .text(d.properties.hood);
+
+                let scale = Math.max(1, Math.min(10, 0.9 / Math.max( dx / mapWidth, 
+                                                                    dy / mapHeight )));
+                let translate = [mapWidth / 2 - x * scale, mapHeight / 2 - y * scale];
+
+                let newTransform = d3.zoomIdentity
+                                        .translate(translate[0],translate[1])
+                                        .scale(scale);
+                map.transition().duration(1000).call(zoom.transform, newTransform);
+
+            }
+
+    }
+    requestData();
+
+    //Credit: Prof. Rz!!
+    function drawLegend(legendSelector, legendColorScale) {
+        const offsets = { width: 10,
+                        top: 2,
+                        bottom: 24 }; 
+        
+        const stepSize = 4; 
+        const minMaxExtendPercent = 0;
+    
+        const legend = d3.select(legendSelector);
+
+        legend.selectAll("*").remove();
+
+        const legendHeight = legend.attr("height");
+        const legendBarWidth = legend.attr("width") - (offsets.width * 2);
+        const legendMinMax = d3.extent(legendColorScale.domain()); 
+        const minMaxExtension = (legendMinMax[1] - legendMinMax[0]) * minMaxExtendPercent;
+        const barHeight = legendHeight - offsets.top - offsets.bottom;     
+        
+        let barScale = d3.scaleLinear().domain([legendMinMax[0]-minMaxExtension,
+                                                legendMinMax[1]+minMaxExtension])
+                                    .range([0,legendBarWidth]);
+
+        let barAxis = d3.axisBottom(barScale);
+        
+        let bar = legend.append("g")
+                        .attr("class", "legend colorbar")
+                        .attr("transform", `translate(${offsets.width},${offsets.top})`)
+
+        
+        for (let i=0; i<legendBarWidth; i=i+stepSize) {
+            
+            let center = i+(stepSize/2);
+            let dataCenter = barAxis.scale().invert( center );
+            
+            if ( dataCenter < legendMinMax[0] ) { 
+            bar.append("rect")
+                .attr("x", i)
+                .attr("y", 0)
+                .attr("width", stepSize)
+                .attr("height",barHeight)
+                .style("fill", legendColorScale( legendMinMax[0] ) ); 
+            }
+            else if ( dataCenter < legendMinMax[1] ) {
+            bar.append("rect")
+                .attr("x", i)
+                .attr("y", 0)
+                .attr("width", stepSize)
+                .attr("height",barHeight)
+                .style("fill", legendColorScale( dataCenter ) ); 
+            }
+            else {
+            bar.append("rect")
+                .attr("x", i)
+                .attr("y", 0)
+                .attr("width", stepSize)
+                .attr("height",barHeight)
+                .style("fill", legendColorScale( legendMinMax[1] ) ); 
+            }
+            
+        }
+        
+        legend.append("g")
+            .attr("class", "legend axis")
+            .attr("transform",`translate(${offsets.width},${offsets.top+barHeight+5})`)
+            .call(barAxis);
+    
+  }
+
+      </script>
+
+
+</body>
+</html>
+      
